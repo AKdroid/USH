@@ -1,0 +1,174 @@
+
+<!-- saved from url=(0065)https://courses.ncsu.edu/csc501/lec/001/wrap/assignments/ush.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+<title>Micro Shell</title>
+<style type="text/css"></style></head>
+<body>
+<div align="center">
+<div align="left" style="font-family:Trebuchet MS;width: 700px;">
+<h1>CSC 501 Program: <i>Shell</i></h1>
+<hr>
+<h3>Assignment:</h3>
+Implement the micro-shell, <em>ush</em> (ie, &#956;-shell).
+<hr>
+
+<h3>Due:</h3>
+See home
+<a href="https://courses.ncsu.edu/csc501/lec/001/index.html">page</a>.
+
+<hr>
+
+<h3><a name="description">Description:</a></h3>
+Implement the Unix shell described in the
+accompanying 
+<a href="https://courses.ncsu.edu/csc501/lec/001/wrap/assignments/ush.1.pdf">man page.</a>
+<strong>Do not</strong> to implement job control.
+Therefore, do <strong>not</strong> implement the following:
+<ul>
+  <li>the <kbd>fg</kbd> command,
+  </li><li>the <kbd>bg</kbd> command,
+  </li><li>the <kbd>kill</kbd> command,
+  </li><li>the <kbd>jobs</kbd> command, or
+  </li><li>the <kbd>&amp;</kbd> operator.
+</li></ul>
+<hr>
+<h3>Turn In:</h3>
+Be sure to turnin <b>all</b> the files needed.
+Include a <tt>Makefile</tt> that creates an executable file
+called <tt>ush</tt>.
+An appropriate penalty will be assessed if this is not so.
+<p>
+Also, denote any resources used--including other students--in a file
+named <b>REFERENCES</b>.
+
+</p><hr>
+
+<h3>Resources:</h3>
+
+We provide
+<a href="https://courses.ncsu.edu/csc501/lec/001/wrap/assignments/ush.tar.gz">code</a>
+that performs command-line
+parsing for the shell.
+The code is reasonably well-commented and tested; however, it comes
+with no explicit or implied warranty.
+Unpack this code with the following command:
+<blockquote><pre>tar xzf ush.tar.gz
+</pre></blockquote>
+
+<hr>
+<h3>Testing:</h3>
+This assignment will be compiled and tested on one
+of the VCL machines.
+<p>
+Testing is automated.
+It primarily consists of short script files that are executed by the
+shell.
+The output of the shell is compared to expected output.
+The following gives an idea of how the testing is conducted.
+(Syntax is bash.)
+</p><blockquote>
+<pre>./ush &lt; test.1 &gt; test.1.out 2&gt;&amp;1
+diff test.1.out test.1.expected</pre>
+</blockquote>
+<hr>
+<h3>Notes:</h3>
+<ol>
+<li>
+    A parsing routine is provided (<a href="https://courses.ncsu.edu/csc501/lec/001/wrap/assignments/ush.tar.gz">code</a>).
+    It comes with no warranty.
+    However, the syntax accepted by the given parser is the <i>de
+    facto</i> syntax for the assignment.
+    Therefore, any program that uses the provided parser
+    <em>unmodified</em>, 
+    will (by definition) not fail any syntax tests.
+</li><li> 
+    Become familiar with the Unix system calls in Section 2 of
+    the Unix programmer's manual.
+    There are several library routines (Section 3) that offer convenient
+    interfaces to some of the more cryptic system calls.
+    However, <b>do not</b> use the <i>system</i> library
+    routine.
+    (I.e, do not use the library routine called “system,” see
+    system(3) manual page.) 
+</li><li> 
+    The shell will be forking other
+    processes, which may in turn fork off other processes, etc.
+    Forking too many process will cause Unix to run out of
+    process descriptors, making
+    everyone on the machine very unhappy.
+  Therefore, 
+    be very careful when testing fork.
+  To kill a horde of runaway
+    ush processes, use the <tt>killall</tt> console command,
+    which will kill every process of a given name.
+
+</li><li>Summary of details enumerated in the manual page
+    (in order of appearance):
+    <ul>
+      <li> rc file (~/.ushrc)
+      </li><li> hostname%
+      </li><li> special chars:<br>
+	  <tt>&amp; | ; &lt; &gt; &gt;&gt; |&amp; &gt;&amp; &gt;&gt;&amp;</tt>
+      </li><li> backslash
+      </li><li> strings
+      </li><li> commands: <br>
+	  <b>cd echo logout nice pwd setenv unsetenv where</b>
+    </li></ul>
+</li><li>Major tasks
+    <ul>
+      <li> Command line parsing
+	  <ul>
+	    <li> ush.tar.gz
+	  </li></ul>
+      </li><li> Command execution
+	  <ul>
+	    <li> fork(2)
+	    </li><li> exec family: execvp(2) might be the best
+	  </li></ul>
+      </li><li> I/O redirection
+	  <ul>
+	    <li> open(2), close(2) (not fopen, fclose)
+	    </li><li> dup(2), dup2(3c)
+	    </li><li> stdin, stdout, stderr
+	  </li></ul>
+      </li><li> Environment variable
+	  <ul>
+	    <li> putenv(3c), getenv(3c)
+	  </li></ul> 
+      </li><li> Signal handling
+	  <ul>
+	    <li> signal(5)
+	    </li><li> signal(3c)
+	    </li><li> getpid(2), getpgrp(2), getppid(2), getpgid(2)
+	    </li><li> setpgid(2), setpgrp(2)
+	  </li></ul>
+    </li></ul>
+      </li><li>
+        The code will be tested on the VCL image named
+	</li>
+  <li>
+   <a href="https://courses.ncsu.edu/csc501/lec/001/wrap/assignments/p2_ushell.pdf">Notes</a> presented in class.
+  </li>
+</ol>
+<hr>
+<h3>Grading:</h3>
+The weighting of this assignment is given in
+<a href="https://courses.ncsu.edu/csc501/lec/001/policies.html#grading">policies</a>. 
+
+<h4>Extra Credit</h4>
+Extra credit of 10% is available for implementing job control.
+In particular, to receive all extra credit students will implement
+<ul>
+  <li>the <kbd>fg</kbd> command,
+  </li><li>the <kbd>bg</kbd> command,
+  </li><li>the <kbd>kill</kbd> command,
+  </li><li>the <kbd>jobs</kbd> command, and
+  </li><li>the <kbd>&amp;</kbd> operator.
+</li></ul>
+(This is the same list that was excluded from the base assignment in the
+<a href="https://courses.ncsu.edu/csc501/lec/001/wrap/assignments/ush.html#description">description</a> section above.)
+</div>
+</div>
+
+
+</body></html>
