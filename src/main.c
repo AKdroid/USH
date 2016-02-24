@@ -11,19 +11,62 @@
 
 void dispatch_cmd(Cmd c){
     
+    int is_built_in=0;    
+    char *p,*q;
     if(strcmp(c->args[0],"logout")==0)
         exit(0);
     if(strcmp(c->args[0],"pwd")==0){
         pwd();
+        is_built_in=1;
     }
     if(strcmp(c->args[0],"cd")==0){
         if(c->nargs==1)
             cd(NULL);
         else 
             cd(c->args[1]);
+        is_built_in=1;
     }
-    
-    
+    if(strcmp(c->args[0],"echo")==0){
+        is_built_in=1;
+        if(c->out!=Tnil){
+            switch(c->out){
+                case Tout:
+                case ToutErr:
+                    echo((c->args)+1,c->outfile,0);
+                    break;
+                case Tapp:
+                case TappErr:  
+                    echo((c->args)+1,c->outfile,1);
+                    break;
+            }
+        }else{
+            echo((c->args)+1,NULL,0);
+        }
+    }
+    if(strcmp(c->args[0],"setenv")==0){
+        p=NULL;
+        q=NULL;
+        is_built_in=1;
+        if(c->nargs>1)
+            p=c->args[1];
+        if(c->nargs>2)
+            q=c->args[2];
+        setenv_(p,q);
+    }
+    if(strcmp(c->args[0],"unsetenv")==0){
+        p=NULL;
+        q=NULL;
+        is_built_in=1;
+        if(c->nargs>1)
+            p=c->args[1];
+        else{
+            printf("Error: Provide a name of the variable to be unset\n");
+            return;
+        }
+        unsetenv_(p);
+    }
+    if(is_built_in) 
+        return;     
 }
 
 void run_shell_interactive(int print,int exit_on_end){
@@ -77,6 +120,7 @@ void read_ushrc(){
 
 int main(){
 
+    init_environment();
     read_ushrc();
     run_shell_interactive(1,1);
     return 0;
