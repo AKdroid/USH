@@ -11,8 +11,18 @@
 
 void dispatch_cmd(Cmd c){
     
-    if(strcmp(c->args[0],"end") ==0 || strcmp(c->args[0],"logout")==0)
+    if(strcmp(c->args[0],"logout")==0)
         exit(0);
+    if(strcmp(c->args[0],"pwd")==0){
+        pwd();
+    }
+    if(strcmp(c->args[0],"cd")==0){
+        if(c->nargs==1)
+            cd(NULL);
+        else 
+            cd(c->args[1]);
+    }
+    
     
 }
 
@@ -32,6 +42,7 @@ void run_shell_interactive(int print,int exit_on_end){
                 if(strcmp(c->args[0],"end") ==0)
                     break;
                 printf("%s\n",c->args[0]);
+                dispatch_cmd(c);
             }
         }
     }
