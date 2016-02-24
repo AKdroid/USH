@@ -47,7 +47,7 @@ void dissect_command(Cmd c){
         for(i=0;i<c->nargs;i++){
             printf("Argument #%d : %s\n",i,c->args[i]);
         }
-        if(strcmp(c->args[0],"exit")==0)
+        if(strcmp(c->args[0],"exit")==0 || strcmp(c->args[0],"end") == 0)
             exit(0);    
     }
 }
