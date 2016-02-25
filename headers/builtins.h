@@ -31,9 +31,13 @@ void unsetenv_(char* name);
 void logout();
 
 //Set the nice value of the command
-void nice_();
+void nice_(int x);
 
+//where goes through the PATH variables listing all instances of an executable
+void where(char* cmd);
 
+//Check whether cmd is built in
+int is_built_in(char *cmd);
 #endif /* BUILT_IN_H */
 
 

@@ -20,7 +20,6 @@ void init_environment(){
 }
 
 
-
 void echo(char** words, char* filename, int append){
 
     char *s=*words;
@@ -137,5 +136,66 @@ void unsetenv_(char* name){
         else
             environ_size-=1;
     }
+}
+
+//Exit the shell
+void logout(){
+    exit(0);
+}
+
+//Set the nice value of the command
+void nice_(int x){
+    nice(x);    
+}
+
+int is_built_in(char* cmd){
+    char* builtins[9];
+    builtins[0]="echo";
+    builtins[1]="cd";
+    builtins[2]="pwd";
+    builtins[3]="setenv";
+    builtins[4]="unsetenv";
+    builtins[5]= "logout";
+    builtins[6]="nice";
+    builtins[7]="where";
+    builtins[8]=NULL;
+    char* x=*builtins;
+    int i;
+    for(i=1;x;i++){
+        if(strcmp(x,cmd)==0){
+            return 1;
+        }
+        x=*(builtins+i);
+    }
+    return 0;
+}
+
+void where(char* cmd){
+
+    int builtin,i;
+    char* PATH,*pptr;    
+    char abspath[2000];
+    builtin = is_built_in(cmd);
+    if (builtin)
+        printf("builtin: %s\n",cmd);
+    PATH=getenv("PATH");
+    //printf("%s\n",PATH);
+    pptr=PATH;
+    while(*pptr){
+        i=0;
+        while(*pptr && *pptr !=':'){
+            abspath[i++]=*pptr;
+            pptr++;
+        }
+        if(*pptr==':')
+            pptr++;
+        if(i>0 && abspath[i-1]!='/')
+            abspath[i++]='/';
+        abspath[i++]=0;
+        strcat(abspath,cmd);
+        if(access(abspath,X_OK)==0){
+            printf("%s\n",abspath);
+        }
+    }    
 }
 
