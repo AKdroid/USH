@@ -19,7 +19,7 @@ void init_environment(){
     
 }
 
-
+/*
 void echo(char** words, char* filename, int append){
 
     char *s=*words;
@@ -42,7 +42,18 @@ void echo(char** words, char* filename, int append){
     if(filename!=NULL)
     fclose(fp);
 }
+*/
 
+
+void echo(char ** words){
+    char *s=*words;
+    int i=1;
+    for(i=1;s;i++){
+        printf("%s ",s);
+        s=*(words+i);
+    }
+    printf("\n");
+}
 void pwd(){
     char path[512];
     if( getcwd(path,512) != 0)

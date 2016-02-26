@@ -122,8 +122,11 @@ int main(){
         p=parse();
         if(p!=NULL){
             c=p->head;
-            dissect_command(c); 
-            execute_fg(c);
+            while(c!=NULL){
+                dissect_command(c); 
+                execute_fg(c);
+                c=c->next;
+            }
         }
     } 
 

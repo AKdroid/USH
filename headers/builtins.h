@@ -13,7 +13,9 @@ typedef enum {ECHO, PWD, CD, SETENV, UNSETENV, LOGOUT, NICE ,CMD} builtin_type;
 
 void init_environment();
 // Print out the words on the stdout, filename is NULL -> stdout else, output redireced to filename
-void echo(char** words, char* filename, int append);
+//void echo(char** words, char* filename, int append);
+
+void echo(char **words);
 
 // Get current working directory
 void pwd();
