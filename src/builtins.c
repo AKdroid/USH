@@ -160,7 +160,7 @@ void nice_(int x){
 }
 
 int is_built_in(char* cmd){
-    char* builtins[9];
+    char* builtins[13];
     builtins[0]="echo";
     builtins[1]="cd";
     builtins[2]="pwd";
@@ -169,12 +169,16 @@ int is_built_in(char* cmd){
     builtins[5]= "logout";
     builtins[6]="nice";
     builtins[7]="where";
-    builtins[8]=NULL;
+    builtins[8]="fg";
+    builtins[9]="bg";
+    buitlins[10]="jobs";
+    builtins[11]="kill";
+    builtins[12]=NULL;
     char* x=*builtins;
     int i;
     for(i=1;x;i++){
         if(strcmp(x,cmd)==0){
-            return 1;
+            return i;
         }
         x=*(builtins+i);
     }
