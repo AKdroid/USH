@@ -100,6 +100,7 @@ void open_files_for_redirection(Cmd c,int* in_pipe, int* out_pipe, int* infp, in
              break;
     }
 }
+
 void restore_fp(int infp_bk, int outfp_bk, int errfp_bk){
     if(infp_bk>=0)
         dup2(infp_bk,STDIN_FILENO);

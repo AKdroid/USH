@@ -29,7 +29,6 @@ struct ush_job{
     JobStatus status;
     Pipe p;
     pid_t pgid;
-    char builtin;
     struct termios modes;
     struct ush_process* first;
 };
@@ -39,7 +38,7 @@ typedef struct ush_job ush_job;
 
 int init_shell();
 
-void create_job(Pipe p);
+int create_job(Pipe p, int nice, int nicevalue,int shift);
 
 void fg(int id);
 
@@ -49,5 +48,10 @@ void kill_(int id);
 
 void jobs();
 
+ush_process* create_process(Cmd c, int infp, int outfp, int shift);
+
+void spawn_subprocess(ush_job* job,ush_process* proc, int bg ,int nice, int nicevalue, pid_t pgid);
+
+void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int open_, int in_, int ou_);
 
 #endif

@@ -35,7 +35,10 @@ void run_shell_interactive(int print,int exit_on_end){
         fflush(stdout);
         p = parse();
         while(p!=NULL){
-            create_job(p,0,0,0);
+            if(create_job(p,0,0,0)==0){
+                goto exitloop;
+            }
+            p=p->next;
         }
     }
     exitloop:
@@ -75,6 +78,7 @@ void read_ushrc(){
 
 int main(){
 
+    is_built_in("echo");
     init_shell();
     init_environment();
     read_ushrc();

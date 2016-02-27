@@ -25,7 +25,7 @@ void destroy_pipe(int* p);
 
 void backup_fp(Cmd c, int* infp_bk, int* outfp_bk, int* errfp_bk);
 
-void restore_fp(int infp_bk, int outfp_bk, int errfp_bk)
+void restore_fp(int infp_bk, int outfp_bk, int errfp_bk);
 
 void set_redirections(Cmd c, int infp, int outfp);
 

@@ -11,7 +11,7 @@ int ush_terminal;
 struct termios ush_modes;
 int ush_interactive;
 
-ush_job* head = NULL;
+ush_job* job_head = NULL;
 
 void disable_signals(){
     signal(SIGINT,SIG_IGN);
@@ -33,11 +33,16 @@ void enable_signals(){
     
 }
 
-void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin){
+void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int open_, int in_, int ou_){
     int infp=-1, outfp=-1, infp_bk=-1, outfp_bk=-1, errfp_bk=-1;
+    char* name,*value;
 
-    if(builtin != 7){
+    if(builtin != 7 && open_==1){
         open_files_for_redirection(c,NULL, NULL, &infp, &outfp );
+    }
+    if(open_ == 0){
+        infp=in_;
+        outfp=ou_;
     }
     if(c->in != Tnil || c->out != Tnil){
         backup_fp(c,&infp_bk,&outfp_bk,&errfp_bk);
@@ -45,21 +50,43 @@ void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin){
     set_redirections(c,infp,outfp);
     switch(builtin){
         case 1: //echo
+            echo((c->args)+1+shift);
             break; 
         case 2: //cd       
-            
+            if(c->nargs==1+shift)
+                cd(NULL);
+            else
+                cd(c->args[1+shift]);
             break;
         case 3: //pwd
+            pwd();
             break;
         case 4: //setenv
+            name=NULL;
+            value=NULL;
+            if(c->nargs>1+shift)
+                name=c->args[1+shift];
+            if(c->nargs>2+shift)
+                value=c->args[2+shift];
+            setenv_(name,value);
             break;
         case 5: //unsetenv
+            if(c->nargs>1+shift)
+                fputs("Error: unsetenv takes one argument",stderr);
+            else
+                unsetenv_(c->args[1+shift]);
             break;
         case 6: //logout
+            logout();
             break;
         case 7: //nice
+            
             break;
         case 8: //where
+            if(c->nargs>1+shift)
+                where(c->args[1+shift]);
+            else
+                fputs("Error: where requires an argument\n",stderr);
             break;
         case 9: //fg
             break;
@@ -71,7 +98,7 @@ void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin){
             break;
     }
     if(c->out != Tnil || c->in != Tnil){
-        restore_fp(c,&infp_bk,&outfp_bk,&errfp_bk);
+        restore_fp(infp_bk,outfp_bk,errfp_bk);
     }
 
 }
@@ -101,28 +128,34 @@ int init_shell(){
     return 0;
 }
 
-void create_job(Pipe p, int nice, int nicevalue,int shift){
+int create_job(Pipe p, int nice, int nicevalue,int shift){
 
     Cmd c;
     int **pipes;
-    int *in_pipe,*out_pipe
     int infp,outfp,infp_bk,outfp_bk,errfp_bk;
-    int pipe_count=0,i;
-    ush_process* temp,tail;
-    ush_job* job;
+    int pipe_count=0,i,bg;
+    char ch;
+    ush_process* temp,*tail;
+    ush_job* job,*tempj;
     c=p->head;
-
+    if(c==NULL)
+        return 1;
+    if(strcmp(c->args[0],"end")==0){
+        return 0;
+    }
+    printf("%s\n",c->args[0]);
     // Create all pipes
     while(c!=NULL){
         if(c->out==Tpipe || c->out==TpipeErr)
             pipe_count++;
         c=c->next;
     }
-   
     if(pipe_count==0){
-        i=is_built_in(c->args[0]);
-        if(i>0){
-            execute_builtin(c,nice,nicevalue,shift);
+        c=p->head;
+        ch=is_built_in(c->args[0]);
+        if(ch>0){
+            execute_builtin(c,nice,nicevalue,shift,ch,1,0,0);
+            return 1;
         }
         
     }
@@ -130,7 +163,6 @@ void create_job(Pipe p, int nice, int nicevalue,int shift){
     job =(ush_job*)malloc(sizeof(ush_job));
     job->p=p;
     job->first=NULL;
-
 
     pipes=(int**)malloc(sizeof(int*)*(pipe_count+2));
     pipes[0]=NULL;
@@ -143,25 +175,48 @@ void create_job(Pipe p, int nice, int nicevalue,int shift){
     tail=job->first;
     while(c!=NULL){ 
         open_files_for_redirection(c,pipes[i-1],pipes[i],&infp, &outfp );
-        temp = create_process(c,infp,outfp);
+        temp = create_process(c,infp,outfp,shift);
         if(tail!=NULL){
             tail->next=temp;
         }else{
             job->first=temp;
         }
         tail=temp;
+        bg=c->exec==Tamp;
         c=c->next;
         i=i+1;
     }
+    job->pgid=-1;
+    
+    tempj=job_head;
+    if(tempj==NULL)
+        job_head=job;
+    else{
+        while(tempj->next != NULL){
+            tempj=tempj->next;
+        }
+        tempj->next=job;
+    }
     tail=job->first;
-    
-    
-
+    while(tail!=NULL){
+        if(tail->next==NULL){
+            if(tail->builtin>0){
+                execute_builtin(tail->cmd,nice,nicevalue,tail->shift,tail->builtin,0,tail->infp,tail->outfp);
+            }else{
+                spawn_subprocess(job,tail,bg,nice,nicevalue,job->pgid);
+            }
+        }else{
+             spawn_subprocess(job,tail,bg,nice,nicevalue,job->pgid);
+        }
+        
+        tail=tail->next;
+    } 
+    return 1;    
 }
 
 ush_process* create_process(Cmd c, int infp, int outfp, int shift){
 
-    ush_process proc = (ush_process*) malloc(sizeof(ush_process));
+    ush_process* proc = (ush_process*) malloc(sizeof(ush_process));
     proc->infp= infp;
     proc->outfp= outfp;
     proc->cmd=c;
@@ -173,7 +228,7 @@ ush_process* create_process(Cmd c, int infp, int outfp, int shift){
     return proc;
 }
 
-void spawn_subprocess(ush_process* proc, int bg ,int nice, int nicevalue, pid_t pgid){
+void spawn_subprocess(ush_job* job,ush_process* proc, int bg ,int nice, int nicevalue, pid_t pgid){
     
     pid_t pid;
     pid_t pid_new;
@@ -187,30 +242,40 @@ void spawn_subprocess(ush_process* proc, int bg ,int nice, int nicevalue, pid_t 
             pgid = pid_new;
         setpgid(pid_new,pgid);
         enable_signals();
+        if(bg!=1)
+            tcsetpgrp(ush_terminal,pgid);
         if(nice)
             nice_(nicevalue);
-        set_redirections(proc->cmd,infp,outfp);
+        set_redirections(proc->cmd,proc->infp,proc->outfp);
         if(is_built_in(proc->cmd->args[proc->shift])==0){
-            res=execve(proc->cmd->args[proc->shift],(proc->cmd->args)+proc->shift);
+            res=execvp(proc->cmd->args[proc->shift],(proc->cmd->args)+proc->shift);
             if(res<0){
                 fputs("Error: Execve failed",stderr);
                 exit(1);
             }
         }else{
-            
-        
+            proc->cmd->in=Tnil;
+            proc->cmd->out=Tnil;
+            execute_builtin(proc->cmd,nice,nicevalue,proc->shift,proc->builtin,0,-1,-1);
+            exit(0);    
         }
         
     }else{
-        if(pgid == 0){
+        if(pgid == -1){
             pgid = pid;
+            job->pgid=pgid;
         }
-        setpgid(pid,pgid)
+        setpgid(pid,pgid);
         proc->pid=pid;
-        if(infp>2)close(infp);
-        if(outfp>2)close(outfp);
-        if(bg!=1)
+        if(proc->infp>2)close(proc->infp);
+        if(proc->outfp>2)close(proc->outfp);
+        if(bg!=1){
+            tcsetpgrp(ush_terminal,pgid);
             wait(&proc->status);
+            tcsetpgrp(ush_terminal,ush_pid);
+            tcgetattr(ush_terminal,&job->modes);
+            tcsetattr(ush_terminal,TCSADRAIN,&ush_modes);
+        }
     }
 } 
 //void execute_in_subshell()
