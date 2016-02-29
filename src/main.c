@@ -12,33 +12,28 @@
 #define HOST "arrao-ush"
 
 
-long int is_numeric(char* str, int* valid){
-    char *eptr;
-    long int ans=0;
-    ans=strtol(str,&eptr,10);
-    if(*eptr!='\0')
-        *valid=0;
-    else
-        *valid=1;
-    return ans;
-}
 
 void run_shell_interactive(int print,int exit_on_end){
-    char* hostname = HOST;
-    Pipe p;
+    char hostname[60];
+    gethostname(hostname,60); 
+    Pipe p,onext;
     Cmd c;
     int i,fp;
     int *in_pipe=NULL,*out_pipe=NULL;
     while(1){
+        update_job_status();
+        fflush(stdout);
         if(print!=0)
-            printf("%s %% ",hostname);
+            printf("%s%% ",hostname);
         fflush(stdout);
         p = parse();
         while(p!=NULL){
+            onext=p->next;
+            p->next=NULL;
             if(create_job(p,0,0,0)==0){
                 goto exitloop;
             }
-            p=p->next;
+            p=onext;
         }
     }
     exitloop:
@@ -78,7 +73,6 @@ void read_ushrc(){
 
 int main(){
 
-    is_built_in("echo");
     init_shell();
     init_environment();
     read_ushrc();

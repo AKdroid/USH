@@ -19,32 +19,6 @@ void init_environment(){
     
 }
 
-/*
-void echo(char** words, char* filename, int append){
-
-    char *s=*words;
-    int i=1;
-    FILE* fp=stdout;
-    char *flag;
-    if(append)
-        flag="a";
-    else
-        flag="w";
-    if(filename!=NULL){
-        fp=fopen(filename,flag);
-    }
-    for(i=1;s;i++){
-        fputs(s,fp);   
-        fputc(' ',fp);
-        s=*(words+i);
-    }
-    fputc('\n',fp);
-    if(filename!=NULL)
-    fclose(fp);
-}
-*/
-
-
 void echo(char ** words){
     char *s=*words;
     int i=1;
@@ -193,7 +167,7 @@ void where(char* cmd){
     char abspath[2000];
     builtin = is_built_in(cmd);
     if (builtin)
-        printf("builtin: %s\n",cmd);
+        printf("%s: shell built-in command.\n",cmd);
     PATH=getenv("PATH");
     //printf("%s\n",PATH);
     pptr=PATH;

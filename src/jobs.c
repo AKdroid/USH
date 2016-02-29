@@ -3,6 +3,7 @@
 #include<unistd.h>
 #include<signal.h>
 #include<termios.h>
+#include<sys/wait.h>
 #include"redirect.h"
 #include"jobs.h"
 
@@ -12,6 +13,18 @@ struct termios ush_modes;
 int ush_interactive;
 
 ush_job* job_head = NULL;
+pid_t most_recent;
+
+long int is_numeric(char* str, int* valid){
+    char *eptr;
+    long int ans=0;
+    ans=strtol(str,&eptr,10);
+    if(*eptr!='\0')
+        *valid=0;
+    else
+        *valid=1;
+    return ans;
+}
 
 void disable_signals(){
     signal(SIGINT,SIG_IGN);
@@ -33,10 +46,191 @@ void enable_signals(){
     
 }
 
-void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int open_, int in_, int ou_){
-    int infp=-1, outfp=-1, infp_bk=-1, outfp_bk=-1, errfp_bk=-1;
-    char* name,*value;
+void print_job(ush_job* j, int index){
+    int i;
+    Cmd c;
+    char* status;
+    switch(j->status){
+        case JOB_RUNNING:
+            status = "Running";
+            break;
+        case JOB_STOPPED:
+            status = "Stopped";
+            break;
+        case JOB_COMPLETED:
+            status = "Done";
+            break;
+    }
+    printf("[%d]%c\t%s \t",index,'-',status);
+    c=j->p->head;
+    
+    while(c!=NULL){
+        //for(i=0;i<c->nargs;i++){
+        printf("%s ",c->args[0]);
+        if(c->next!=NULL)
+            printf("|");
+        c=c->next;
+    }
+    printf("\n");
+}
 
+ush_job* get_job_by_index(int index){
+    int i=1;
+    ush_job* temp=job_head;
+    while(temp!=NULL){
+        if(i==index)
+            break;
+        temp=temp->next;
+        i=i+1;
+    }
+    return temp;
+}
+
+ush_job* get_job_by_pgid(pid_t pgid){
+    ush_job* temp = job_head;
+    while(temp!=NULL){
+        if(temp->pgid == pgid)
+            break;
+        temp=temp->next;
+    }
+    return temp;
+}
+
+int get_job_index(pid_t pgid){
+    int i=1;
+    ush_job* temp = job_head;
+    while(temp!=NULL){
+        if(temp->pgid == pgid)
+            return i;
+        temp=temp->next;
+        i=i+1;
+    }
+    return 0;
+
+}
+
+void destroy_job(ush_job* job){
+    ush_process* p,*temp;
+    Pipe pp;
+    int shift;
+    //jobs();
+    p=job->first;
+    shift=p->shift;
+    while(p!=NULL){ 
+        temp=p;
+        p=p->next;
+        free(temp);
+    }
+    pp=job->p;
+    if(shift!=0)
+        free(pp);
+    else
+        freePipe(pp);
+    free(job);
+}
+
+void unlink_job(pid_t pgid){
+    ush_job* temp=job_head,* prev = NULL;
+    while(temp!=NULL){
+        if(temp->pgid == pgid){
+            break;
+        }
+        prev=temp;
+        temp=temp->next;
+    }
+    
+    if(temp!=NULL){
+        if(job_head == temp)
+            job_head=job_head->next;
+        else
+            prev->next=temp->next;
+        temp->next=NULL;
+        destroy_job(temp);
+    }
+}
+
+int wait_for_job(ush_job* job,int fg){
+    int options;
+    int result;
+    ush_process *proc;
+    int stopped;
+    if(fg == 1){
+        options = WUNTRACED;
+    }else{
+        options = WNOHANG | WUNTRACED;
+    }
+    proc = job->first;
+    stopped=0;
+    if(job->status == JOB_STOPPED)
+        return 0;
+    while(proc!= NULL){
+        if(proc->pid<=0){
+            proc=proc->next;
+            continue;
+        }
+        result = waitpid(proc->pid,&job->return_value,options);
+        if(result == proc->pid){
+            if(WIFSTOPPED(job->return_value)){
+                //printf("[%d]+ Stopped! %d\n",-1, job->pgid);
+                job->status=JOB_STOPPED;
+                tcgetattr(ush_terminal,&job->modes);
+                stopped = 1;
+                break;
+            }
+        } else if(result == 0){
+            stopped = 2;
+            break;
+        }
+        proc=proc->next;
+    }
+    if(stopped==0){
+        //printf("[%d]+ Done! %d\n",-1, job->pgid);
+        job->status=JOB_COMPLETED;
+    }
+    if(fg == 1){
+        tcsetpgrp(ush_terminal,ush_pid);
+        tcsetattr(ush_terminal,TCSADRAIN,&ush_modes);        
+    }
+    return stopped;
+}
+
+void update_job_status(){
+
+    ush_job* job,*prev_job,*temp;
+    ush_process* proc;
+    int index,result,stopped;
+    prev_job=NULL;
+    job = job_head;
+    index = 1;
+    while(job!=NULL){
+        stopped = wait_for_job(job,0);
+        if(job->status == JOB_COMPLETED){
+            temp = job;
+            if(prev_job==NULL)
+                job_head = job->next;
+            else{
+                prev_job->next = job->next;
+            }
+        }
+        else{
+            if(stopped == 1){
+                printf("[%d] Stopped %d\n",index,job->pgid);
+            }
+            prev_job=job;
+            temp=NULL;
+        }
+        job=job->next;
+        if(temp!=NULL)
+            destroy_job(temp);
+        index = index + 1;
+    }
+}
+
+void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int open_, int in_, int ou_){
+    int infp=-1, outfp=-1, infp_bk=-1, outfp_bk=-1, errfp_bk=-1,index,valid,nv;
+    char* name,*value;
+    Pipe p;
+    Cmd ccopy;
     if(builtin != 7 && open_==1){
         open_files_for_redirection(c,NULL, NULL, &infp, &outfp );
     }
@@ -80,7 +274,22 @@ void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int
             logout();
             break;
         case 7: //nice
-            
+            if(c->nargs<=shift+1){
+                //fputs("Error: nice requires at least 1 argument\n",stderr);
+            }else{
+                nv=(int)is_numeric(c->args[shift+1],&valid);
+                p=(Pipe)malloc(sizeof(struct pipe_t)); 
+                p->head=c;
+                p->next=NULL;
+                p->type=Pout;
+                if(valid){
+                    if(c->nargs>=shift+3)
+                        create_job(p,1,nv,shift+2);
+                }else{
+                    nv=4;
+                    create_job(p,1,nv,shift+1);
+                }
+            } 
             break;
         case 8: //where
             if(c->nargs>1+shift)
@@ -89,12 +298,38 @@ void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int
                 fputs("Error: where requires an argument\n",stderr);
             break;
         case 9: //fg
+            if(c->nargs>1){
+                if(c->args[1][0]=='%')
+                    index=is_numeric((c->args[1]+1),&valid);
+                else
+                    index=is_numeric(c->args[1],&valid);
+                if(valid)
+                    fg(index);
+            }
             break;
         case 10://bg
+            if(c->nargs>1){
+                p=(Pipe)malloc(sizeof(struct pipe_t));
+                if(c->args[1][0]=='%')
+                    index=is_numeric((c->args[1]+1),&valid);
+                else
+                    index=is_numeric(c->args[1],&valid);
+                if(valid)
+                    bg(index);
+            }
             break;
         case 11://jobs
+            jobs();
             break;
         case 12://kill  
+            if(c->nargs>1){
+                if(c->args[1][0]=='%')
+                    index=is_numeric((c->args[1]+1),&valid);
+                else
+                    index=is_numeric(c->args[1],&valid);
+                if(valid)
+                    kill_index(index);
+            }
             break;
     }
     if(c->out != Tnil || c->in != Tnil){
@@ -143,7 +378,6 @@ int create_job(Pipe p, int nice, int nicevalue,int shift){
     if(strcmp(c->args[0],"end")==0){
         return 0;
     }
-    printf("%s\n",c->args[0]);
     // Create all pipes
     while(c!=NULL){
         if(c->out==Tpipe || c->out==TpipeErr)
@@ -152,9 +386,13 @@ int create_job(Pipe p, int nice, int nicevalue,int shift){
     }
     if(pipe_count==0){
         c=p->head;
-        ch=is_built_in(c->args[0]);
+        ch=is_built_in(c->args[shift]);
         if(ch>0){
             execute_builtin(c,nice,nicevalue,shift,ch,1,0,0);
+            if(shift!=0)
+                free(p);
+            else
+                freePipe(p);
             return 1;
         }
         
@@ -163,7 +401,8 @@ int create_job(Pipe p, int nice, int nicevalue,int shift){
     job =(ush_job*)malloc(sizeof(ush_job));
     job->p=p;
     job->first=NULL;
-
+    job->return_value=-1;
+    job->next=NULL;
     pipes=(int**)malloc(sizeof(int*)*(pipe_count+2));
     pipes[0]=NULL;
     pipes[pipe_count+1]=NULL;
@@ -198,6 +437,7 @@ int create_job(Pipe p, int nice, int nicevalue,int shift){
         tempj->next=job;
     }
     tail=job->first;
+    job->status=JOB_RUNNING;
     while(tail!=NULL){
         if(tail->next==NULL){
             if(tail->builtin>0){
@@ -211,6 +451,15 @@ int create_job(Pipe p, int nice, int nicevalue,int shift){
         
         tail=tail->next;
     } 
+    for(i=1;i<=pipe_count;i++){
+        destroy_pipe(pipes[i]);
+    }   
+    free(pipes);
+    if(bg != 1){
+        wait_for_job(job,1);
+        if(job->status == JOB_COMPLETED)
+            unlink_job(job->pgid);
+    }
     return 1;    
 }
 
@@ -222,7 +471,6 @@ ush_process* create_process(Cmd c, int infp, int outfp, int shift){
     proc->cmd=c;
     proc->args=(c->args)+shift;
     proc->builtin=is_built_in(c->args[shift]);
-    proc->status = JOB_RUNNING;
     proc->shift=shift;
     proc->next=NULL;
     return proc;
@@ -233,6 +481,7 @@ void spawn_subprocess(ush_job* job,ush_process* proc, int bg ,int nice, int nice
     pid_t pid;
     pid_t pid_new;
     int res;
+    ush_process *x;
     pid=fork();
     if(pid < 0){
         fputs("Error: Forking failed\n",stderr);
@@ -242,15 +491,16 @@ void spawn_subprocess(ush_job* job,ush_process* proc, int bg ,int nice, int nice
             pgid = pid_new;
         setpgid(pid_new,pgid);
         enable_signals();
-        if(bg!=1)
+        if(bg!=1){
             tcsetpgrp(ush_terminal,pgid);
+        }
         if(nice)
             nice_(nicevalue);
         set_redirections(proc->cmd,proc->infp,proc->outfp);
         if(is_built_in(proc->cmd->args[proc->shift])==0){
             res=execvp(proc->cmd->args[proc->shift],(proc->cmd->args)+proc->shift);
             if(res<0){
-                fputs("Error: Execve failed",stderr);
+                printf("%s:  Command not found.\n",proc->cmd->args[0]);
                 exit(1);
             }
         }else{
@@ -271,11 +521,67 @@ void spawn_subprocess(ush_job* job,ush_process* proc, int bg ,int nice, int nice
         if(proc->outfp>2)close(proc->outfp);
         if(bg!=1){
             tcsetpgrp(ush_terminal,pgid);
-            wait(&proc->status);
-            tcsetpgrp(ush_terminal,ush_pid);
-            tcgetattr(ush_terminal,&job->modes);
-            tcsetattr(ush_terminal,TCSADRAIN,&ush_modes);
+        }
+        else{
+            printf("[%d] %d\n",get_job_index(pgid),pgid);            
+            usleep(100000);
         }
     }
 } 
 //void execute_in_subshell()
+
+void fg(int index){
+
+    ush_job* job = get_job_by_index(index);
+    if(job== NULL){
+        fputs("Job of the given index does not exist\n",stderr);
+        return;
+    }
+    
+    tcsetpgrp(ush_terminal,job->pgid);
+    //tcsetattr(ush_terminal,TCSADRAIN, &(job->modes));
+    if(job->status == JOB_STOPPED){
+        job->status=JOB_RUNNING;
+        tcsetattr(ush_terminal,TCSADRAIN, &(job->modes));
+        kill(- job->pgid, SIGCONT);
+    }
+        
+    wait_for_job(job,1);
+    if(job->status == JOB_COMPLETED)
+        unlink_job(job->pgid);
+}
+
+void bg(int index){
+    ush_job* job = get_job_by_index(index);
+    if(job== NULL){
+        fputs("Job of the given index does not exist\n",stderr);
+        return;
+    }
+    if(job->status == JOB_STOPPED){
+        job->status=JOB_RUNNING;
+        kill(- job->pgid, SIGCONT);
+    } else {
+        fputs("Job already in running state\m",stderr);
+    }
+}
+
+void kill_index(int index){
+    ush_job* job = get_job_by_index(index);
+    if(job== NULL){
+        fputs("Job of the given index does not exist\n",stderr);
+        return;
+    }
+    kill(-job->pgid,SIGTERM);
+}
+
+void jobs(){
+    ush_job* job;
+    int index=1;
+    job = job_head;
+    while(job!=NULL){
+        print_job(job,index);
+        job=job->next;
+        index = index + 1;
+    }
+
+}

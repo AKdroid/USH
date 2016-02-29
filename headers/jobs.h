@@ -15,8 +15,6 @@ struct ush_process{
     char** args;
     Cmd cmd;
     pid_t pid;    
-    int returnVal;
-    JobStatus status;
     char builtin;
     int infp,outfp,shift;
     struct ush_process* next;
@@ -31,6 +29,7 @@ struct ush_job{
     pid_t pgid;
     struct termios modes;
     struct ush_process* first;
+    int return_value;
 };
 
 typedef struct ush_process ush_process;
@@ -54,4 +53,5 @@ void spawn_subprocess(ush_job* job,ush_process* proc, int bg ,int nice, int nice
 
 void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int open_, int in_, int ou_);
 
+void update_job_status(void);
 #endif
