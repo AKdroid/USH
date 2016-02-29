@@ -41,7 +41,6 @@ int redirect_stdin(int infp){
 }
 
 int redirect_stdout(int outfp){
-    printf("Called redirect stdout\n");
     dup2(outfp, STDOUT_FILENO);
 }
 

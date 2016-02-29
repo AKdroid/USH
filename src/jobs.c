@@ -410,6 +410,12 @@ int create_job(Pipe p, int nice, int nicevalue,int shift){
     if(strcmp(c->args[0],"end")==0){
         return 0;
     }
+    if(c->in == Tin){
+        if(access(c->infile,R_OK)<0){
+            printf("%s: No such file or directory\n",c->infile);
+            return 1;
+        }
+    }
     // Create all pipes
     while(c!=NULL){
         if(c->out==Tpipe || c->out==TpipeErr)

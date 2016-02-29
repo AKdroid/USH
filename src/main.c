@@ -11,7 +11,11 @@
 #include"jobs.h"
 #define HOST "arrao-ush"
 
+/*
+    TODO : nice -> output push up
+    TODO : current job implementation
 
+*/
 
 void run_shell_interactive(int print,int exit_on_end){
     char hostname[60];

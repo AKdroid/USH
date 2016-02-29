@@ -44,7 +44,7 @@ int cd(char* path){
         path = getenv("HOME");
     result = chdir(path);
     if(result != 0){
-        printf("Error Occured while changing the directory\n");
+        printf("%s: No such file or directory\n",path);
         return -1;
     }
     return 0;
