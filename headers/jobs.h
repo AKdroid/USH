@@ -9,7 +9,7 @@
 #include"parse.h"
 
 
-typedef enum { JOB_FG, JOB_BG, JOB_STOPPED, JOB_COMPLETED, JOB_RUNNING} JobStatus ;
+typedef enum { JOB_KILLED, JOB_STOPPED, JOB_COMPLETED, JOB_RUNNING} JobStatus ;
 
 struct ush_process{
     char** args;

@@ -12,8 +12,30 @@ int ush_terminal;
 struct termios ush_modes;
 int ush_interactive;
 
+int sigterm_count=0;
+
 ush_job* job_head = NULL;
 pid_t most_recent;
+
+void sigterm_handler(int num){
+    
+    ush_job* job;
+    if(num == SIGTERM && sigterm_count==0){
+        sigterm_count=1;
+        
+        for(job=job_head;job!=NULL;job=job->next){
+            kill(-job->pgid,SIGTERM);
+            kill(-job->pgid,SIGCONT);
+            job->status=JOB_KILLED;
+        }
+        update_job_status();
+        fflush(stdout);
+        signal(SIGTERM,SIG_DFL);
+        raise(SIGTERM);
+    }
+
+}
+
 
 long int is_numeric(char* str, int* valid){
     char *eptr;
@@ -43,7 +65,7 @@ void enable_signals(){
     signal(SIGTTOU,SIG_DFL);
     signal(SIGHUP,SIG_DFL);
     signal(SIGQUIT,SIG_DFL);
-    
+    signal(SIGTERM,SIG_DFL); 
 }
 
 void print_job(ush_job* j, int index){
@@ -59,6 +81,9 @@ void print_job(ush_job* j, int index){
             break;
         case JOB_COMPLETED:
             status = "Done";
+            break;
+        case JOB_KILLED:
+            status="Killed";
             break;
     }
     printf("[%d]%c\t%s \t",index,'-',status);
@@ -185,7 +210,11 @@ int wait_for_job(ush_job* job,int fg){
     }
     if(stopped==0){
         //printf("[%d]+ Done! %d\n",-1, job->pgid);
-        job->status=JOB_COMPLETED;
+        
+        if(WTERMSIG(job->return_value) == SIGTERM | WTERMSIG(job->return_value) == SIGKILL)
+            job->status = JOB_KILLED;
+        else
+            job->status=JOB_COMPLETED;
     }
     if(fg == 1){
         tcsetpgrp(ush_terminal,ush_pid);
@@ -204,8 +233,9 @@ void update_job_status(){
     index = 1;
     while(job!=NULL){
         stopped = wait_for_job(job,0);
-        if(job->status == JOB_COMPLETED){
+        if(job->status == JOB_COMPLETED || job->status == JOB_KILLED){
             temp = job;
+            print_job(job,index);
             if(prev_job==NULL)
                 job_head = job->next;
             else{
@@ -214,7 +244,7 @@ void update_job_status(){
         }
         else{
             if(stopped == 1){
-                printf("[%d] Stopped %d\n",index,job->pgid);
+                print_job(job,index);
             }
             prev_job=job;
             temp=NULL;
@@ -348,6 +378,8 @@ int init_shell(){
     if(ush_interactive){
         
         disable_signals();        
+        
+        signal(SIGTERM,sigterm_handler);
 
         ush_pid = getpid();
         //Set the shell pid as the process group id        
@@ -559,7 +591,7 @@ void bg(int index){
     }
     if(job->status == JOB_STOPPED){
         job->status=JOB_RUNNING;
-        kill(- job->pgid, SIGCONT);
+        kill(-job->pgid, SIGCONT);
     } else {
         fputs("Job already in running state\m",stderr);
     }
@@ -572,6 +604,8 @@ void kill_index(int index){
         return;
     }
     kill(-job->pgid,SIGTERM);
+    kill(-job->pgid,SIGCONT);
+    job->status=JOB_KILLED;
 }
 
 void jobs(){
