@@ -14,6 +14,10 @@ int ush_interactive;
 
 int sigterm_count=0;
 
+int most_recent = 0;
+int stop_counter = STBASE;
+int bg_counter = BGBASE;
+
 ush_job* job_head = NULL;
 pid_t most_recent;
 
@@ -86,7 +90,7 @@ void print_job(ush_job* j, int index){
             status="Killed";
             break;
     }
-    printf("[%d]%c\t%s \t",index,'-',status);
+    printf("[%d]%c\t%s \t",index,most_recent==j->pgid?'+':'-',status);
     c=j->p->head;
     
     while(c!=NULL){
@@ -200,6 +204,7 @@ int wait_for_job(ush_job* job,int fg){
                 job->status=JOB_STOPPED;
                 tcgetattr(ush_terminal,&job->modes);
                 stopped = 1;
+                job->event_index = stop_counter++;
                 break;
             }
         } else if(result == 0){
@@ -211,10 +216,14 @@ int wait_for_job(ush_job* job,int fg){
     if(stopped==0){
         //printf("[%d]+ Done! %d\n",-1, job->pgid);
         
-        if(WTERMSIG(job->return_value) == SIGTERM | WTERMSIG(job->return_value) == SIGKILL)
+        if(WTERMSIG(job->return_value) == SIGTERM | WTERMSIG(job->return_value) == SIGKILL){
             job->status = JOB_KILLED;
-        else
+            job->event_index = -1;
+        }
+        else{
             job->status=JOB_COMPLETED;
+            job->event_index = 0;
+        }
     }
     if(fg == 1){
         tcsetpgrp(ush_terminal,ush_pid);
@@ -227,10 +236,12 @@ void update_job_status(){
 
     ush_job* job,*prev_job,*temp;
     ush_process* proc;
-    int index,result,stopped;
+    int index,result,stopped,maxindex;
     prev_job=NULL;
     job = job_head;
     index = 1;
+    most_recent = 0;
+    maxindex=0;
     while(job!=NULL){
         stopped = wait_for_job(job,0);
         if(job->status == JOB_COMPLETED || job->status == JOB_KILLED){
@@ -245,6 +256,10 @@ void update_job_status(){
         else{
             if(stopped == 1){
                 print_job(job,index);
+            }
+            if(maxindex < job->event_index){
+                maxindex = job->event_index;
+                most_recent = job->pgid;
             }
             prev_job=job;
             temp=NULL;
@@ -336,6 +351,8 @@ void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int
                 if(valid)
                     fg(index);
             }
+            else
+            fg(-1);
             break;
         case 10://bg
             if(c->nargs>1){
@@ -346,7 +363,8 @@ void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int
                     index=is_numeric(c->args[1],&valid);
                 if(valid)
                     bg(index);
-            }
+            } else 
+                bg(-1);
             break;
         case 11://jobs
             jobs();
@@ -359,7 +377,8 @@ void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int
                     index=is_numeric(c->args[1],&valid);
                 if(valid)
                     kill_index(index);
-            }
+            }else 
+            kill_index(-1);
             break;
     }
     if(c->out != Tnil || c->in != Tnil){
@@ -440,6 +459,7 @@ int create_job(Pipe p, int nice, int nicevalue,int shift){
     job->p=p;
     job->first=NULL;
     job->return_value=-1;
+    job->event_index = 0;
     job->next=NULL;
     pipes=(int**)malloc(sizeof(int*)*(pipe_count+2));
     pipes[0]=NULL;
@@ -561,16 +581,27 @@ void spawn_subprocess(ush_job* job,ush_process* proc, int bg ,int nice, int nice
             tcsetpgrp(ush_terminal,pgid);
         }
         else{
+            job->event_index=bg_counter++;
             printf("[%d] %d\n",get_job_index(pgid),pgid);            
             usleep(100000);
+            
         }
     }
 } 
 //void execute_in_subshell()
 
 void fg(int index){
-
-    ush_job* job = get_job_by_index(index);
+    
+    ush_job* job;
+    if(index != -1)
+        job  = get_job_by_index(index);
+    else {
+        printf("%d\n",most_recent);
+        if (most_recent > 0)
+             job = get_job_by_pgid(most_recent);
+        else
+            return;
+    }
     if(job== NULL){
         fputs("Job of the given index does not exist\n",stderr);
         return;
@@ -584,13 +615,22 @@ void fg(int index){
         kill(- job->pgid, SIGCONT);
     }
         
+    job->event_index = 0;
     wait_for_job(job,1);
     if(job->status == JOB_COMPLETED)
         unlink_job(job->pgid);
 }
 
 void bg(int index){
-    ush_job* job = get_job_by_index(index);
+    ush_job* job;
+    if(index != -1)
+        job  = get_job_by_index(index);
+    else {
+        if (most_recent > 0)
+             job = get_job_by_pgid(most_recent);
+        else
+            return;    
+    }    
     if(job== NULL){
         fputs("Job of the given index does not exist\n",stderr);
         return;
@@ -601,14 +641,26 @@ void bg(int index){
     } else {
         fputs("Job already in running state\m",stderr);
     }
+    job->event_index = bg_counter++;
 }
 
 void kill_index(int index){
-    ush_job* job = get_job_by_index(index);
+
+    ush_job* job;
+    if(index != -1)
+        job  = get_job_by_index(index);
+    else {
+        if (most_recent > 0)
+             job = get_job_by_pgid(most_recent);
+        else
+            return;
+    }
+
     if(job== NULL){
         fputs("Job of the given index does not exist\n",stderr);
         return;
     }
+    job->status = -1;
     kill(-job->pgid,SIGTERM);
     kill(-job->pgid,SIGCONT);
     job->status=JOB_KILLED;

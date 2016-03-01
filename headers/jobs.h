@@ -7,7 +7,8 @@
 #include<signal.h>
 #include<termios.h>
 #include"parse.h"
-
+#define BGBASE 1000000
+#define STBASE 10000000
 
 typedef enum { JOB_KILLED, JOB_STOPPED, JOB_COMPLETED, JOB_RUNNING} JobStatus ;
 
@@ -30,6 +31,7 @@ struct ush_job{
     struct termios modes;
     struct ush_process* first;
     int return_value;
+    int event_index;
 };
 
 typedef struct ush_process ush_process;

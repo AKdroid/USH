@@ -12,8 +12,7 @@
 #define HOST "arrao-ush"
 
 /*
-    TODO : nice -> output push up
-    TODO : current job implementation
+    TODO : nice -> output push up the process
 
 */
 
