@@ -7,28 +7,22 @@
 #include<fcntl.h>
 #include"parse.h"
 
-int open_file_for_read(char* fname);
-
-int open_file_for_write(char* fname);
-
-int open_file_for_append(char* fname);
-
+//Get a pipe 
 int* create_pipe();
 
-int redirect_stdin(int infp);
-
-int redirect_stdout(int outfp);
-
-int redirect_stdout_err(int outfp); 
-
+//Destroy a retrieved pipe
 void destroy_pipe(int* p);
 
+//Backup file pointers
 void backup_fp(Cmd c, int* infp_bk, int* outfp_bk, int* errfp_bk);
 
+//Restore the backed up file pointers
 void restore_fp(int infp_bk, int outfp_bk, int errfp_bk);
 
+//Set the redirections for the command c
 void set_redirections(Cmd c, int infp, int outfp);
 
+//Set the infp and outfp values for command c
 void open_files_for_redirection(Cmd c,int* in_pipe, int* out_pipe, int* infp, int* outfp );
 
 #endif /* REDIRECT_H */

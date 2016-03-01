@@ -1,5 +1,5 @@
 CC=gcc
-CCFLAGS=-w -g -Wall
+CCFLAGS= -w -g -Wall
 LIBDIR=headers
 INCLUDE=-I headers
 SRC=src

@@ -5,18 +5,29 @@
 #include<sys/stat.h>
 #include<unistd.h>
 #include<fcntl.h>
+#include<signal.h>
 #include"parse.h"
 #include"builtins.h"
 #include"redirect.h"
 #include"jobs.h"
-#define HOST "arrao-ush"
 
 /*
-    TODO : nice -> output push up the process
-
+    Author: Akhil Raghavendra Rao (arrao@ncsu.edu)
+    Main Driver Program For USH -> Micro Shell
+    CSC501 Assignment 2
+    
+    Initialize the shell and make it fg.
+    
+    Read the $HOME/.ushrc to initialize
+    
+    Provide the interactive shell
 */
 
 void run_shell_interactive(int print,int exit_on_end){
+
+    /*
+     * runs the interactive shell
+     */ 
     char hostname[60];
     gethostname(hostname,60); 
     Pipe p,onext;
@@ -41,12 +52,12 @@ void run_shell_interactive(int print,int exit_on_end){
     }
     exitloop:
     fflush(stdout);
-    if(exit_on_end)
-        exit(0);
 }
 
 void read_ushrc(){
-    
+    /*
+     * Reads the executes the .ushrc file
+     */ 
     int stdin_copy;
     int stdout_copy,stderr_copy;
     int ushrc_fp,tmp;
@@ -60,13 +71,13 @@ void read_ushrc(){
     strcat(ushrc,home);
     strcat(ushrc,"/.ushrc");
     ushrc_fp=open(ushrc,O_RDONLY);
-    tmp = open(".ushrc.log",O_WRONLY | O_CREAT | O_TRUNC , S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-    if(ushrc_fp<0)
-        return;
-    dup2(ushrc_fp,STDIN_FILENO);
-    dup2(tmp,STDOUT_FILENO);
-    dup2(tmp,STDERR_FILENO);
-    run_shell_interactive(0,0);
+    if(ushrc_fp>=0){
+        tmp = open(".ushrc.log",O_WRONLY | O_CREAT | O_TRUNC , S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+        dup2(ushrc_fp,STDIN_FILENO);
+        dup2(tmp,STDOUT_FILENO);
+        dup2(tmp,STDERR_FILENO);
+        run_shell_interactive(0,0);
+    }
     fflush(stdout);
     fflush(stderr);
     dup2(stdin_copy,STDIN_FILENO);
@@ -80,6 +91,7 @@ int main(){
     init_environment();
     read_ushrc();
     run_shell_interactive(1,1);
+    job_cleanup();
     return 0;
 }
 

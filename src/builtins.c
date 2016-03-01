@@ -5,10 +5,19 @@
 #include<fcntl.h>
 #include"builtins.h"
 
-extern char** environ;
-int environ_size=0;
+/*
+    Author: Akhil Raghavendra Rao (arrao@ncsu.edu)
+    Implementation for non-job control USH builtins    
+*/
+
+extern char** environ; //Defined in stdlib.h
+
+int environ_size=0; //Size of environ before any additions
 
 void init_environment(){
+    /*
+     *  Initialize environment
+     */   
     int i=1;
     char*x=*environ;
     environ_size=0;
@@ -16,10 +25,12 @@ void init_environment(){
         environ_size+=1;
         x=*(environ+i);
     }
-    
 }
 
 void echo(char ** words){
+    /*
+     * Outputs the words terminated by new line.
+     */   
     char *s=*words;
     int i=1;
     for(i=1;s;i++){
@@ -29,6 +40,9 @@ void echo(char ** words){
     printf("\n");
 }
 void pwd(){
+    /*
+     * Outputs the current working directory 
+     */
     char path[512];
     if( getcwd(path,512) != 0)
         printf("%s\n",path);
@@ -36,9 +50,11 @@ void pwd(){
         printf("Error in getting current directory\n");
 }
 
-//Changes the directory to path if it exists and has permissions
 int cd(char* path){
-    
+    /*
+     * Changes the working directory to path.
+     * If the path is NULL -> directory is changed to $HOME
+     */ 
     int result;
     if(path == NULL )
         path = getenv("HOME");
@@ -50,8 +66,11 @@ int cd(char* path){
     return 0;
 }
 
-//Lists all the environment variables if both var and value is null, sets var to null string if value is null, 
 void setenv_(char* var, char* value){
+    /*
+     * Sets the environment variable "var"="value"
+     * if both var and value are NULL : prints all the environment variables.
+     */   
     char* x="";
     char *y;
     int i;
@@ -95,9 +114,10 @@ void setenv_(char* var, char* value){
     }
 }
 
-
-//Unset a variable from the environment
 void unsetenv_(char* name){
+    /*
+     * Unsets an environment variable with name "name"
+     */
     int l,i,f,cnt=0;
     char **x,**y,*z;
     f=0;
@@ -123,17 +143,24 @@ void unsetenv_(char* name){
     }
 }
 
-//Exit the shell
 void logout(){
+    /*
+     * logout the shell/ Exit the shell
+     */   
     exit(0);
 }
 
 //Set the nice value of the command
 void nice_(int x){
+    //Sets the nice value of calling process to x
     nice(x);    
 }
 
 int is_built_in(char* cmd){
+    /*
+     * returns which builtin command
+     * if not a builtin command returns 0 
+     */
     char* builtins[13];
     char*x;
     int i;
@@ -161,7 +188,9 @@ int is_built_in(char* cmd){
 }
 
 void where(char* cmd){
-
+    /*
+     * Lists all the instances of the command "cmd" in the $PATH including builtin
+     */
     int builtin,i;
     char* PATH,*pptr;    
     char abspath[2000];
@@ -169,7 +198,6 @@ void where(char* cmd){
     if (builtin)
         printf("%s: shell built-in command.\n",cmd);
     PATH=getenv("PATH");
-    //printf("%s\n",PATH);
     pptr=PATH;
     while(*pptr){
         i=0;

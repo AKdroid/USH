@@ -13,7 +13,6 @@
 typedef enum { JOB_KILLED, JOB_STOPPED, JOB_COMPLETED, JOB_RUNNING} JobStatus ;
 
 struct ush_process{
-    char** args;
     Cmd cmd;
     pid_t pid;    
     char builtin;
@@ -36,6 +35,8 @@ struct ush_job{
 
 typedef struct ush_process ush_process;
 typedef struct ush_job ush_job;
+
+void job_cleanup();
 
 int init_shell();
 

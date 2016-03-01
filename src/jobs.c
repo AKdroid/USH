@@ -7,22 +7,34 @@
 #include"redirect.h"
 #include"jobs.h"
 
-int ush_pid;
-int ush_terminal;
-struct termios ush_modes;
-int ush_interactive;
+/*
+    Author: Akhil Raghavendra Rao (arrao@ncsu.edu)
+    Job Control Implementation 
+    Job builtin Implementation
+    
+    
+*/
 
-int sigterm_count=0;
 
-int most_recent = 0;
-int stop_counter = STBASE;
-int bg_counter = BGBASE;
+int ush_pid; //USH Process Group
+int ush_terminal; //USH File Pointer
+struct termios ush_modes; //USH Terminal Modes Storage
+int ush_interactive; //USH Interactive Mode or Not
 
-ush_job* job_head = NULL;
-pid_t most_recent;
+int sigterm_count=0; //Signal termination count
+
+int stop_counter = STBASE; //Counter to set event_index for stopped jobs
+int bg_counter = BGBASE;   //Counter to set event_index for background jobs
+
+ush_job* job_head = NULL;  //Head of the job list
+pid_t most_recent = 0; //Stores the pgid of current job
 
 void sigterm_handler(int num){
-    
+    /*
+     * Handles the SIGTERM signal
+     * Send SIGTERM all the existing jobs
+     * Performs cleanup  
+     */     
     ush_job* job;
     if(num == SIGTERM && sigterm_count==0){
         sigterm_count=1;
@@ -37,11 +49,25 @@ void sigterm_handler(int num){
         signal(SIGTERM,SIG_DFL);
         raise(SIGTERM);
     }
+}
+
+void job_cleanup(){
+    ush_job* job;
+    for(job=job_head;job!=NULL;job=job->next){
+            kill(-job->pgid,SIGTERM);
+            kill(-job->pgid,SIGCONT);
+            job->status=JOB_KILLED;
+        }
+        update_job_status();
+        fflush(stdout);
 
 }
 
 
 long int is_numeric(char* str, int* valid){
+    /*
+     * returns integer value of str and sets valid to 1 if str is a perfectly parsable 
+     */
     char *eptr;
     long int ans=0;
     ans=strtol(str,&eptr,10);
@@ -53,6 +79,9 @@ long int is_numeric(char* str, int* valid){
 }
 
 void disable_signals(){
+    /*
+     *  Disable signals 
+     */   
     signal(SIGINT,SIG_IGN);
     signal(SIGTSTP,SIG_IGN);
     signal(SIGTTIN,SIG_IGN);
@@ -62,7 +91,9 @@ void disable_signals(){
 }
 
 void enable_signals(){
-
+    /*
+     * Enable Signals to their default handler
+     */
     signal(SIGINT,SIG_DFL);
     signal(SIGTSTP,SIG_DFL);
     signal(SIGTTIN,SIG_DFL);
@@ -73,6 +104,9 @@ void enable_signals(){
 }
 
 void print_job(ush_job* j, int index){
+    /*
+     * Prints a job in a formatted way
+     */ 
     int i;
     Cmd c;
     char* status;
@@ -97,13 +131,57 @@ void print_job(ush_job* j, int index){
         //for(i=0;i<c->nargs;i++){
         printf("%s ",c->args[0]);
         if(c->next!=NULL)
-            printf("|");
+            printf("| ");
         c=c->next;
     }
     printf("\n");
 }
 
+void execute_nice_process(Cmd c, int nice, int nicevalue, int shift){
+    /*
+     *  If parameter of nice is builtin, execute in the same process
+     *  If calling process is executed in same process as main shell,  create job
+     *  If calling process is executed in a subprocess, spawn a new process and wait for its completion
+     */ 
+    pid_t pid;
+    int res,status,open_=1;
+    char ch;
+    Pipe p;
+    ch = is_built_in(c->args[shift]);
+
+    if(ch == 0){ 
+        if (c->out != Tpipe && c->out != TpipeErr){
+            p=(Pipe) malloc(sizeof(struct pipe_t));
+            p->head=c;
+            p->next=NULL;
+            create_job(p,nice,nicevalue,shift);
+            return;  
+        }
+    pid  = fork();
+    if(pid<0){
+        return;
+    } else if(pid == 0){
+        nice_(nicevalue);
+        if(execvp(c->args[shift],c->args+shift) < 0){
+            printf("%S: Command not found.\n",c->args[shift]);
+            exit(1);
+        }
+    } else {
+        waitpid(pid,NULL,0);    
+    }
+    }
+    else{
+        if (c->out == Tpipe && c->out == TpipeErr){
+            open_=0;
+        }
+        execute_builtin(c,nice,nicevalue,shift,ch,open_,0,0);
+    }
+}
+
 ush_job* get_job_by_index(int index){
+    /*
+     * Returns job at index "index"
+     */
     int i=1;
     ush_job* temp=job_head;
     while(temp!=NULL){
@@ -116,6 +194,9 @@ ush_job* get_job_by_index(int index){
 }
 
 ush_job* get_job_by_pgid(pid_t pgid){
+    /*
+     * Returns job with process group "pgid"
+     */ 
     ush_job* temp = job_head;
     while(temp!=NULL){
         if(temp->pgid == pgid)
@@ -126,6 +207,9 @@ ush_job* get_job_by_pgid(pid_t pgid){
 }
 
 int get_job_index(pid_t pgid){
+    /*
+     * Returns the index of the jovb with process group ID pgid
+     */
     int i=1;
     ush_job* temp = job_head;
     while(temp!=NULL){
@@ -139,6 +223,9 @@ int get_job_index(pid_t pgid){
 }
 
 void destroy_job(ush_job* job){
+    /*
+     * Performs cleanup of job. Deletes it and internal pipes
+     */ 
     ush_process* p,*temp;
     Pipe pp;
     int shift;
@@ -159,6 +246,9 @@ void destroy_job(ush_job* job){
 }
 
 void unlink_job(pid_t pgid){
+    /* 
+     *  Unlinks the job with process group pgid and destroys it.
+     */
     ush_job* temp=job_head,* prev = NULL;
     while(temp!=NULL){
         if(temp->pgid == pgid){
@@ -179,6 +269,11 @@ void unlink_job(pid_t pgid){
 }
 
 int wait_for_job(ush_job* job,int fg){
+    /*
+     * Wait for a job to stop/finish/killed
+     * Updates the status of the job when a change os state is detected using waitpid
+     * if fg is set to 1, process waits for an event change else unblocking waitpid call
+     */
     int options;
     int result;
     ush_process *proc;
@@ -214,8 +309,6 @@ int wait_for_job(ush_job* job,int fg){
         proc=proc->next;
     }
     if(stopped==0){
-        //printf("[%d]+ Done! %d\n",-1, job->pgid);
-        
         if(WTERMSIG(job->return_value) == SIGTERM | WTERMSIG(job->return_value) == SIGKILL){
             job->status = JOB_KILLED;
             job->event_index = -1;
@@ -234,6 +327,10 @@ int wait_for_job(ush_job* job,int fg){
 
 void update_job_status(){
 
+    /*
+     *  Check the job status for background and stopped jobs
+     *  Should be executed before parsing the command line input
+     */
     ush_job* job,*prev_job,*temp;
     ush_process* proc;
     int index,result,stopped,maxindex;
@@ -272,10 +369,17 @@ void update_job_status(){
 }
 
 void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int open_, int in_, int ou_){
+    /*
+     * Executes a builtin command
+     * nice = 1 :- set the nice value to nicevlaue
+     * shift = index at which target command is found
+     * builtin = code of the builtin to be executed
+     * open_ = 0 -> do not open any files but use in_ and ou_, 
+     * open_ = 1 -> open files if required for redirection, 
+     * open_ = 2 -> do not open or backup any files for redirection  
+     */
     int infp=-1, outfp=-1, infp_bk=-1, outfp_bk=-1, errfp_bk=-1,index,valid,nv;
     char* name,*value;
-    Pipe p;
-    Cmd ccopy;
     if(builtin != 7 && open_==1){
         open_files_for_redirection(c,NULL, NULL, &infp, &outfp );
     }
@@ -283,7 +387,7 @@ void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int
         infp=in_;
         outfp=ou_;
     }
-    if(c->in != Tnil || c->out != Tnil){
+    if(open_!= -1 &&(c->in != Tnil || c->out != Tnil)){
         backup_fp(c,&infp_bk,&outfp_bk,&errfp_bk);
     }
     set_redirections(c,infp,outfp);
@@ -316,6 +420,7 @@ void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int
                 unsetenv_(c->args[1+shift]);
             break;
         case 6: //logout
+            job_cleanup();
             logout();
             break;
         case 7: //nice
@@ -323,16 +428,12 @@ void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int
                 //fputs("Error: nice requires at least 1 argument\n",stderr);
             }else{
                 nv=(int)is_numeric(c->args[shift+1],&valid);
-                p=(Pipe)malloc(sizeof(struct pipe_t)); 
-                p->head=c;
-                p->next=NULL;
-                p->type=Pout;
                 if(valid){
                     if(c->nargs>=shift+3)
-                        create_job(p,1,nv,shift+2);
+                        execute_nice_process(c,1,nv,shift+2);
                 }else{
                     nv=4;
-                    create_job(p,1,nv,shift+1);
+                    execute_nice_process(c,1,nv,shift+1);
                 }
             } 
             break;
@@ -356,7 +457,6 @@ void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int
             break;
         case 10://bg
             if(c->nargs>1){
-                p=(Pipe)malloc(sizeof(struct pipe_t));
                 if(c->args[1][0]=='%')
                     index=is_numeric((c->args[1]+1),&valid);
                 else
@@ -381,14 +481,20 @@ void execute_builtin(Cmd c, int nice, int nicevalue,int shift, char builtin, int
             kill_index(-1);
             break;
     }
-    if(c->out != Tnil || c->in != Tnil){
+    if(open_!= -1 &&(c->in != Tnil || c->out != Tnil)){
         restore_fp(infp_bk,outfp_bk,errfp_bk);
     }
 
 }
 
 int init_shell(){
-    
+    /*
+     * Initialise the shell.
+     * Disable keyboard interrupts
+     * Setup the signal handler
+     * MAke it foreground
+     */
+     
     // If the shell is the foreground process do the following:
     int set_pg;
 
@@ -414,8 +520,15 @@ int init_shell(){
     return 0;
 }
 
-int create_job(Pipe p, int nice, int nicevalue,int shift){
-
+int create_job(Pipe p, int nice, int nicevalue, int shift){
+    /*
+     * Creates a job if not builtin
+     * Creates the pipes
+     * Initializes the job and its processes
+     * Add the job to the linked list 
+     * Spawn the subprocesses if required
+     * If foreground wait for job completion/stop. If job completed/killed, unlink the job 
+     */
     Cmd c;
     int **pipes;
     int infp,outfp,infp_bk,outfp_bk,errfp_bk;
@@ -506,9 +619,9 @@ int create_job(Pipe p, int nice, int nicevalue,int shift){
         }else{
              spawn_subprocess(job,tail,bg,nice,nicevalue,job->pgid);
         }
-        
         tail=tail->next;
     } 
+
     for(i=1;i<=pipe_count;i++){
         destroy_pipe(pipes[i]);
     }   
@@ -522,12 +635,13 @@ int create_job(Pipe p, int nice, int nicevalue,int shift){
 }
 
 ush_process* create_process(Cmd c, int infp, int outfp, int shift){
-
+    /*
+     *  Initialize a ush_process 
+     */
     ush_process* proc = (ush_process*) malloc(sizeof(ush_process));
     proc->infp= infp;
     proc->outfp= outfp;
     proc->cmd=c;
-    proc->args=(c->args)+shift;
     proc->builtin=is_built_in(c->args[shift]);
     proc->shift=shift;
     proc->next=NULL;
@@ -535,7 +649,10 @@ ush_process* create_process(Cmd c, int infp, int outfp, int shift){
 }
 
 void spawn_subprocess(ush_job* job,ush_process* proc, int bg ,int nice, int nicevalue, pid_t pgid){
-    
+    /*
+     *   Spawns a subprocess. Sets the pgid to pgid and if -1, sets the pgid to pid. 
+     *   Makes the pgid foreground if bg != 1  
+     */
     pid_t pid;
     pid_t pid_new;
     int res;
@@ -562,9 +679,14 @@ void spawn_subprocess(ush_job* job,ush_process* proc, int bg ,int nice, int nice
                 exit(1);
             }
         }else{
+            if(proc->builtin!=7){
             proc->cmd->in=Tnil;
             proc->cmd->out=Tnil;
-            execute_builtin(proc->cmd,nice,nicevalue,proc->shift,proc->builtin,0,-1,-1);
+            res=0;
+            }else{
+                res=-1;
+            }
+            execute_builtin(proc->cmd,nice,nicevalue,proc->shift,proc->builtin,res,-1,-1);
             exit(0);    
         }
         
@@ -588,15 +710,16 @@ void spawn_subprocess(ush_job* job,ush_process* proc, int bg ,int nice, int nice
         }
     }
 } 
-//void execute_in_subshell()
 
 void fg(int index){
-    
+    /*
+     * Puts the job at index to foreground
+     * if index = -1, current job is put to foreground
+     */ 
     ush_job* job;
     if(index != -1)
         job  = get_job_by_index(index);
     else {
-        printf("%d\n",most_recent);
         if (most_recent > 0)
              job = get_job_by_pgid(most_recent);
         else
@@ -622,6 +745,10 @@ void fg(int index){
 }
 
 void bg(int index){
+    /*
+     * Puts the job at index to background
+     * if index = -1, current job is put to background
+     */
     ush_job* job;
     if(index != -1)
         job  = get_job_by_index(index);
@@ -645,7 +772,10 @@ void bg(int index){
 }
 
 void kill_index(int index){
-
+    /*
+     * Sends a SIGTERM to job at index "index"
+     * if index = -1, current job is terminated
+     */
     ush_job* job;
     if(index != -1)
         job  = get_job_by_index(index);
@@ -667,6 +797,9 @@ void kill_index(int index){
 }
 
 void jobs(){
+    /*
+     * Shows the list of active jobs
+     */
     ush_job* job;
     int index=1;
     job = job_head;
